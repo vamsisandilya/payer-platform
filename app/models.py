@@ -37,3 +37,46 @@ class Coverage(Base):
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
     plan_id: Mapped[int] = mapped_column(ForeignKey("insurance_plans.id"))
     status: Mapped[CoverageStatus]
+
+
+class Provider(Base):
+    __tablename__ = "providers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    npi: Mapped[str] = mapped_column(String(10))
+
+
+class PriorAuthStatus(enum.Enum):
+    PENDING = 'pending'
+    APPROVED = 'approved'
+    DENIED = 'denied'
+    MANUAL_REVIEW = 'manual_review'
+
+
+class PriorAuthorization(Base):
+    __tablename__ = "prior_authorizations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
+    provider_id: Mapped[int] = mapped_column(ForeignKey("providers.id"))
+    procedure_code: Mapped[str] = mapped_column(String(10))
+    diagnosis_code: Mapped[str] = mapped_column(String(10))
+    has_referral: Mapped[bool]
+    pt_failed: Mapped[bool]
+    status: Mapped[PriorAuthStatus]
+
+
+class DecisionOutcome(enum.Enum):
+    APPROVED = "approved"
+    DENIED = "denied"
+    MANUAL_REVIEW = "manual_review"
+
+
+class AuthorizationDecision(Base):
+    __tablename__ = "authorization_decisions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    prior_auth_id: Mapped[int] = mapped_column(ForeignKey("prior_authorizations.id"))
+    decision: Mapped[DecisionOutcome]
+    reason: Mapped[str] = mapped_column(String(255))
