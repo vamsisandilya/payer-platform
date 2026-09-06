@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine, get_db
+
 from app.models import (
     AuthorizationDecision,
     Coverage,
@@ -12,9 +13,13 @@ from app.models import (
     Member,
     PriorAuthorization,
     PriorAuthStatus,
+    Claim,
+    ClaimLine,
+    ClaimStatus,
+    AuditEvent,
 )
-from app.schemas import CoverageRead, MemberCreate, MemberRead, PriorAuthorizationCreate, PriorAuthorizationRead, AuthorizationDecisionRead
-from app.rules import evaluate_prior_auth
+from app.schemas import CoverageRead, MemberCreate, MemberRead, PriorAuthorizationCreate, PriorAuthorizationRead, AuthorizationDecisionRead, ClaimRead, ClaimCreate, ClaimLineRead, ClaimAdjudicationRequest
+from app.rules import evaluate_prior_auth, calculate_adjudication
 
 Base.metadata.create_all(bind=engine)
 
@@ -121,3 +126,59 @@ def create_authorization_decision(prior_auth_id: int, db: Session = Depends(get_
     db.commit()
     db.refresh(db_decision)
     return db_decision
+
+
+@app.post("/claims", response_model=ClaimRead)
+def create_claim(claim: ClaimCreate, db: Session = Depends(get_db)):
+    db_claim = Claim(
+        member_id=claim.member_id,
+        provider_id=claim.provider_id,
+        status=ClaimStatus.SUBMITTED
+    )
+    db.add(db_claim)
+    db.flush()
+    for line in claim.lines:
+        db_line = ClaimLine(
+            claim_id=db_claim.id,
+            procedure_code=line.procedure_code,
+            submitted_amount=line.submitted_amount,
+        )
+        db.add(db_line)
+    db.commit()
+    db.refresh(db_claim)
+    return db_claim
+
+
+@app.post("/claims/{claim_id}/adjudicate", response_model=ClaimRead)
+def adjudicate_claim(
+    claim_id: int,
+    adjudication: ClaimAdjudicationRequest,
+    db: Session = Depends(get_db),
+):
+    claim = db.get(Claim, claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail="Claim not found")
+
+    allowed_amounts = {
+        item.line_id: item.allowed_amount for item in adjudication.line_allowed_amounts
+    }
+
+    for line in claim.lines:
+        line.allowed_amount = allowed_amounts[line.id]
+        line.insurance_paid, line.patient_responsibility = calculate_adjudication(
+            submitted_amount=line.submitted_amount,
+            allowed_amount=line.allowed_amount,
+        )
+
+    claim.status = ClaimStatus.ADJUDICATED
+
+    db_audit_event = AuditEvent(
+        claim_id=claim.id,
+        event_type="CLAIM_ADJUDICATED",
+        description="Claim lines adjudicated and status updated",
+    )
+    db.add(db_audit_event)
+
+    db.commit()
+    db.refresh(claim)
+    return claim
