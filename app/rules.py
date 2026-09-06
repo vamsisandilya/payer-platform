@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from app.models import DecisionOutcome
 
 
@@ -10,3 +12,9 @@ def evaluate_prior_auth(coverage_active: bool, has_referral: bool, pt_failed: bo
         return (DecisionOutcome.MANUAL_REVIEW, "No referral on file")
     else:
         return (DecisionOutcome.MANUAL_REVIEW, "Physical therapy has not been tried yet")
+
+
+def calculate_adjudication(submitted_amount: Decimal, allowed_amount: Decimal) -> tuple[Decimal, Decimal]:
+    insurance_paid = allowed_amount
+    patient_responsibility = submitted_amount - allowed_amount
+    return insurance_paid, patient_responsibility
