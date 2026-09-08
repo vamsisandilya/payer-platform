@@ -43,7 +43,7 @@ class Provider(Base):
     __tablename__ = "providers"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100))
+    provider_name: Mapped[str] = mapped_column(String(100))
     npi: Mapped[str] = mapped_column(String(10))
 
 
