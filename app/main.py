@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database import Base, engine, get_db
+from app.database import get_db
 
 from app.models import (
     AuthorizationDecision,
@@ -20,8 +20,6 @@ from app.models import (
 )
 from app.schemas import CoverageRead, MemberCreate, MemberRead, PriorAuthorizationCreate, PriorAuthorizationRead, AuthorizationDecisionRead, ClaimRead, ClaimCreate, ClaimLineRead, ClaimAdjudicationRequest
 from app.rules import evaluate_prior_auth, calculate_adjudication
-
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
