@@ -18,8 +18,9 @@ from app.models import (
     ClaimStatus,
     AuditEvent,
 )
-from app.schemas import CoverageRead, MemberCreate, MemberRead, PriorAuthorizationCreate, PriorAuthorizationRead, AuthorizationDecisionRead, ClaimRead, ClaimCreate, ClaimLineRead, ClaimAdjudicationRequest
+from app.schemas import (CoverageRead, MemberCreate, MemberRead, PriorAuthorizationCreate, PriorAuthorizationRead, AuthorizationDecisionRead, ClaimRead, ClaimCreate, ClaimLineRead, ClaimAdjudicationRequest)
 from app.rules import evaluate_prior_auth, calculate_adjudication
+from app.auth import RequireRole
 
 app = FastAPI()
 
@@ -69,7 +70,11 @@ def read_member_coverage(member_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/prior-authorizations", response_model=PriorAuthorizationRead)
-def create_prior_authorization(prior: PriorAuthorizationCreate, db: Session = Depends(get_db)):
+def create_prior_authorization(
+    prior: PriorAuthorizationCreate,
+    db: Session = Depends(get_db),
+    identity: dict = Depends(RequireRole("provider"))
+):
     db_prior_authorization = PriorAuthorization(
         member_id=prior.member_id,
         provider_id=prior.provider_id,
@@ -94,7 +99,11 @@ def read_prior_authorization(prior_auth_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/prior-authorizations/{prior_auth_id}/decision", response_model=AuthorizationDecisionRead)
-def create_authorization_decision(prior_auth_id: int, db: Session = Depends(get_db)):
+def create_authorization_decision(
+    prior_auth_id: int,
+    db: Session = Depends(get_db),
+    identity: dict = Depends(RequireRole("reviewer"))
+):
     prior_authorization = db.get(PriorAuthorization, prior_auth_id)
     if prior_authorization is None:
         raise HTTPException(status_code=404, detail="Prior authorization not found")
@@ -127,7 +136,11 @@ def create_authorization_decision(prior_auth_id: int, db: Session = Depends(get_
 
 
 @app.post("/claims", response_model=ClaimRead)
-def create_claim(claim: ClaimCreate, db: Session = Depends(get_db)):
+def create_claim(
+    claim: ClaimCreate,
+    db: Session = Depends(get_db),
+    identity: dict = Depends(RequireRole("provider"))
+):
     db_claim = Claim(
         member_id=claim.member_id,
         provider_id=claim.provider_id,
@@ -152,6 +165,7 @@ def adjudicate_claim(
     claim_id: int,
     adjudication: ClaimAdjudicationRequest,
     db: Session = Depends(get_db),
+    identity: dict = Depends(RequireRole("reviewer"))
 ):
     claim = db.get(Claim, claim_id)
     if claim is None:
@@ -180,3 +194,14 @@ def adjudicate_claim(
     db.commit()
     db.refresh(claim)
     return claim
+
+
+@app.get("/claims/{claim_id}", response_model=ClaimRead)
+def read_claim(claim_id: int, db: Session = Depends(get_db), identity: dict = Depends(RequireRole("provider"))):
+    claim = db.get(Claim, claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    if claim.provider_id == identity["provider_id"]:
+        return claim
+    else:
+        raise HTTPException(status_code=404, detail="Claim not found")
