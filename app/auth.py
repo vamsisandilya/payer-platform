@@ -4,6 +4,10 @@ import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models import Claim, PriorAuthorization
 
 load_dotenv()
 
@@ -30,3 +34,21 @@ class RequireRole:
         if identity["role"] != self.role:
             raise HTTPException(status_code=403, detail="Forbidden")
         return identity
+
+
+def provider_has_relationship(db: Session, provider_id: int, member_id: int) -> bool:
+    has_prior_auth = db.execute(
+        select(PriorAuthorization).where(
+            PriorAuthorization.provider_id == provider_id,
+            PriorAuthorization.member_id == member_id,
+        )
+    ).first() is not None
+
+    has_claim = db.execute(
+        select(Claim).where(
+            Claim.provider_id == provider_id,
+            Claim.member_id == member_id,
+        )
+    ).first() is not None
+
+    return has_prior_auth or has_claim

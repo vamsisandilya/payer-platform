@@ -20,7 +20,7 @@ from app.models import (
 )
 from app.schemas import (CoverageRead, MemberCreate, MemberRead, PriorAuthorizationCreate, PriorAuthorizationRead, AuthorizationDecisionRead, ClaimRead, ClaimCreate, ClaimLineRead, ClaimAdjudicationRequest)
 from app.rules import evaluate_prior_auth, calculate_adjudication
-from app.auth import RequireRole
+from app.auth import RequireRole, get_current_identity, provider_has_relationship
 
 app = FastAPI()
 
@@ -39,18 +39,39 @@ def create_member(member: MemberCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/members/{member_id}", response_model=MemberRead)
-def read_member(member_id: int, db: Session = Depends(get_db)):
+def read_member(
+    member_id: int,
+    db: Session = Depends(get_db),
+    identity: dict = Depends(get_current_identity),
+):
     member = db.get(Member, member_id)
     if member is None:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    if identity["role"] == "provider":
+        if not provider_has_relationship(db, identity["provider_id"], member_id):
+            raise HTTPException(status_code=404, detail="Member not found")
+    elif identity["role"] != "reviewer":
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     return member
 
 
 @app.get("/members/{member_id}/coverage", response_model=list[CoverageRead])
-def read_member_coverage(member_id: int, db: Session = Depends(get_db)):
+def read_member_coverage(
+    member_id: int,
+    db: Session = Depends(get_db),
+    identity: dict = Depends(get_current_identity),
+):
     member = db.get(Member, member_id)
     if member is None:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    if identity["role"] == "provider":
+        if not provider_has_relationship(db, identity["provider_id"], member_id):
+            raise HTTPException(status_code=404, detail="Member not found")
+    elif identity["role"] != "reviewer":
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     stmt = (
         select(Coverage, InsurancePlan)
