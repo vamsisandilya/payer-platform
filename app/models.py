@@ -118,3 +118,11 @@ class AuditEvent(Base):
     event_type: Mapped[str] = mapped_column(String(50))
     description: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class IdempotencyRecord(Base):
+    __tablename__ = "idempotency_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id"))
