@@ -1,5 +1,6 @@
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Header
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -17,6 +18,7 @@ from app.models import (
     ClaimLine,
     ClaimStatus,
     AuditEvent,
+    IdempotencyRecord
 )
 from app.schemas import (CoverageRead, MemberCreate, MemberRead, PriorAuthorizationCreate, PriorAuthorizationRead, AuthorizationDecisionRead, ClaimRead, ClaimCreate, ClaimLineRead, ClaimAdjudicationRequest)
 from app.rules import evaluate_prior_auth, calculate_adjudication
@@ -160,8 +162,16 @@ def create_authorization_decision(
 def create_claim(
     claim: ClaimCreate,
     db: Session = Depends(get_db),
-    identity: dict = Depends(RequireRole("provider"))
+    identity: dict = Depends(RequireRole("provider")),
+    idempotency_key: str = Header()
 ):
+    existing_record = db.execute(
+        select(IdempotencyRecord).where(IdempotencyRecord.idempotency_key == idempotency_key)
+    ).scalars().first()
+
+    if existing_record is not None:
+        return db.get(Claim, existing_record.claim_id)
+
     db_claim = Claim(
         member_id=claim.member_id,
         provider_id=claim.provider_id,
@@ -176,7 +186,21 @@ def create_claim(
             submitted_amount=line.submitted_amount,
         )
         db.add(db_line)
-    db.commit()
+
+    db_idempotency_record = IdempotencyRecord(
+        idempotency_key=idempotency_key,
+        claim_id=db_claim.id,
+    )
+    db.add(db_idempotency_record)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        winning_record = db.execute(
+            select(IdempotencyRecord).where(IdempotencyRecord.idempotency_key == idempotency_key)
+        ).scalars().first()
+        return db.get(Claim, winning_record.claim_id)
+
     db.refresh(db_claim)
     return db_claim
 
