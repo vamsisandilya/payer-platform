@@ -1,5 +1,5 @@
 from fastapi import Depends, FastAPI, HTTPException, Header
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -216,6 +216,17 @@ def adjudicate_claim(
     if claim is None:
         raise HTTPException(status_code=404, detail="Claim not found")
 
+    result = db.execute(
+        update(Claim)
+        .where(Claim.id == claim_id, Claim.status == ClaimStatus.SUBMITTED)
+        .values(status=ClaimStatus.ADJUDICATED)
+    )
+    if result.rowcount == 0:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Claim has already been adjudicated")
+
+    claim.status = ClaimStatus.ADJUDICATED
+
     allowed_amounts = {
         item.line_id: item.allowed_amount for item in adjudication.line_allowed_amounts
     }
@@ -226,8 +237,6 @@ def adjudicate_claim(
             submitted_amount=line.submitted_amount,
             allowed_amount=line.allowed_amount,
         )
-
-    claim.status = ClaimStatus.ADJUDICATED
 
     db_audit_event = AuditEvent(
         claim_id=claim.id,
