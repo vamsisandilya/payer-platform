@@ -2,7 +2,7 @@ import enum
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -89,11 +89,15 @@ class ClaimStatus(enum.Enum):
 
 class Claim(Base):
     __tablename__ = "claims"
+    __table_args__ = (
+        Index("ix_claims_member_status_created", "member_id", "status", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
     provider_id: Mapped[int] = mapped_column(ForeignKey("providers.id"))
     status: Mapped[ClaimStatus]
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     lines: Mapped[list["ClaimLine"]] = relationship(back_populates="claim")
 
 
