@@ -6,3 +6,4 @@ pydantic
 alembic
 pyjwt
 python-dotenv
+pytest
