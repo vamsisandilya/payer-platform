@@ -38,17 +38,21 @@ class RequireRole:
 
 def provider_has_relationship(db: Session, provider_id: int, member_id: int) -> bool:
     has_prior_auth = db.execute(
-        select(PriorAuthorization).where(
+        select(PriorAuthorization)
+        .where(
             PriorAuthorization.provider_id == provider_id,
             PriorAuthorization.member_id == member_id,
         )
+        .limit(1)
     ).first() is not None
 
     has_claim = db.execute(
-        select(Claim).where(
+        select(Claim)
+        .where(
             Claim.provider_id == provider_id,
             Claim.member_id == member_id,
         )
+        .limit(1)
     ).first() is not None
 
     return has_prior_auth or has_claim
