@@ -31,6 +31,8 @@ This project implements the core workflows of a health insurer's backend: verify
 - **A 404-vs-403 existence-leak fix**, self-identified and corrected: resource ownership failures return the identical response whether a resource doesn't exist or just isn't yours.
 - **A self-identified authorization gap**, found and fixed: any authenticated provider could view any patient's data with no relationship check at all.
 - **A migration-autogenerate bug caught before running it**: Alembic's autogenerate turned a column rename into "drop + add," which would have destroyed the one real row in that table — caught by reviewing the diff, not trusting it blindly.
+- **A real ~106x query speedup found while benchmarking**: a missing `.limit(1)` on a SQLAlchemy 2.0-style `select()` was silently materializing tens of thousands of matching rows per request (585 ms → 5.5 ms avg once fixed) — a gotcha specific to the 2.0 Core-style API, since the legacy `Query.first()` added that `LIMIT` automatically.
+- **A Redis cache with every real failure mode exercised live**: hit/miss timing measured directly, staleness reproduced by writing around the cache, and a Redis outage that took the endpoint down entirely (500) until fixed to fail open — cache errors now fall back to Postgres instead of breaking the request.
 
 ## Features
 
@@ -49,6 +51,7 @@ This project implements the core workflows of a health insurer's backend: verify
 - **Database:** PostgreSQL 16
 - **Migrations:** Alembic
 - **Auth:** PyJWT
+- **Cache:** Redis
 - **Testing:** pytest
 - **Containers:** Docker Compose
 
@@ -97,6 +100,7 @@ app/
   auth.py       # JWT verification, role-based access, resource-ownership checks
   main.py       # HTTP endpoints
   database.py   # Engine, session management
+  cache.py      # Redis client
 alembic/        # Schema migration history
 tests/          # Unit tests
 generator.py    # Synthetic test-data generation
@@ -122,7 +126,7 @@ pytest -v
 
 ## Roadmap
 
-Phases 0–2 complete (Steps 1–9 of 21): domain modeling, correctness under real-world conditions (migrations, auth, idempotency, concurrency) and performance/scale (volume + indexing). In progress: Phase 3 (asynchrony & events — Redis, Celery, Kafka).
+Phases 0–2 complete (Steps 1–9 of 21): domain modeling, correctness under real-world conditions (migrations, auth, idempotency, concurrency) and performance/scale (volume + indexing). Phase 3 (asynchrony & events) started: Step 10 (Redis eligibility cache) done. In progress: Step 11 (background jobs — Celery).
 
 ## License
 
