@@ -1,9 +1,13 @@
+import json
+
+import redis
 from fastapi import Depends, FastAPI, HTTPException, Header
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.cache import redis_client
 
 from app.models import (
     AuthorizationDecision,
@@ -75,6 +79,15 @@ def read_member_coverage(
     elif identity["role"] != "reviewer":
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    cache_key = f"coverage:{member_id}"
+    try:
+        cached = redis_client.get(cache_key)
+    except redis.RedisError:
+        cached = None
+
+    if cached is not None:
+        return [CoverageRead.model_validate(item) for item in json.loads(cached)]
+
     stmt = (
         select(Coverage, InsurancePlan)
         .join(InsurancePlan, Coverage.plan_id == InsurancePlan.id)
@@ -82,7 +95,7 @@ def read_member_coverage(
     )
     rows = db.execute(stmt).all()
 
-    return [
+    result = [
         CoverageRead(
             status=coverage.status,
             plan_name=plan.plan_name,
@@ -90,6 +103,17 @@ def read_member_coverage(
         )
         for coverage, plan in rows
     ]
+
+    try:
+        redis_client.setex(
+            cache_key,
+            60,
+            json.dumps([item.model_dump(mode="json") for item in result]),
+        )
+    except redis.RedisError:
+        pass
+
+    return result
 
 
 @app.post("/prior-authorizations", response_model=PriorAuthorizationRead)
