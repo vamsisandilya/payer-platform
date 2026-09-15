@@ -30,6 +30,10 @@ class CoverageRead(BaseModel):
     plan_type: str
 
 
+class CoverageUpdate(BaseModel):
+    status: CoverageStatus
+
+
 class PriorAuthorizationCreate(BaseModel):
     member_id: int
     provider_id: int

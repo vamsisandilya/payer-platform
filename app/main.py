@@ -24,7 +24,7 @@ from app.models import (
     AuditEvent,
     IdempotencyRecord
 )
-from app.schemas import (CoverageRead, MemberCreate, MemberRead, PriorAuthorizationCreate, PriorAuthorizationRead, AuthorizationDecisionRead, ClaimRead, ClaimCreate, ClaimLineRead, ClaimAdjudicationRequest)
+from app.schemas import (CoverageRead, CoverageUpdate, MemberCreate, MemberRead, PriorAuthorizationCreate, PriorAuthorizationRead, AuthorizationDecisionRead, ClaimRead, ClaimCreate, ClaimLineRead, ClaimAdjudicationRequest)
 from app.rules import evaluate_prior_auth, calculate_adjudication
 from app.auth import RequireRole, get_current_identity, provider_has_relationship
 
@@ -114,6 +114,29 @@ def read_member_coverage(
         pass
 
     return result
+
+
+@app.patch("/coverage/{coverage_id}", response_model=CoverageRead)
+def update_coverage(
+    coverage_id: int,
+    coverage_update: CoverageUpdate,
+    db: Session = Depends(get_db),
+    identity: dict = Depends(RequireRole("reviewer")),
+):
+    coverage = db.get(Coverage, coverage_id)
+    if coverage is None:
+        raise HTTPException(status_code=404, detail="Coverage not found")
+
+    coverage.status = coverage_update.status
+    db.commit()
+
+    try:
+        redis_client.delete(f"coverage:{coverage.member_id}")
+    except redis.RedisError:
+        pass
+
+    plan = db.get(InsurancePlan, coverage.plan_id)
+    return CoverageRead(status=coverage.status, plan_name=plan.plan_name, plan_type=plan.plan_type)
 
 
 @app.post("/prior-authorizations", response_model=PriorAuthorizationRead)
